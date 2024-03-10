@@ -1,0 +1,130 @@
+-- DVD Rental data set.
+-- This was written on PostgreSQL
+
+-- User-defined function.
+
+CREATE OR REPLACE FUNCTION rental_by_month (rental_date TIMESTAMP)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS
+$$
+DECLARE 
+  rental_month TEXT;
+BEGIN
+  rental_month := TO_CHAR(rental_date, 'Month');
+  RETURN rental_month;
+END;
+$$;
+
+-- Test function
+
+SELECT rental_by_month('2007-02-15'); -- Should return 'February'
+
+--  Create a detailed table
+
+CREATE TABLE detailed_rental (
+  rental_id INT,
+  store_id INT,
+  payment_date VARCHAR(25),
+  payment_amount numeric (7,2)
+   );
+
+--  Create a Summary table
+
+CREATE TABLE summary_rental (
+  store_id INT,
+  payment_month VARCHAR(25),
+  total_revenue numeric(10,2)
+);
+
+SELECT * FROM summary_rental;
+SELECT * FROM detailed_rental;
+
+-- Create a Trigger function
+
+CREATE OR REPLACE FUNCTION sum_trigger_function()
+  RETURNS TRIGGER 
+  LANGUAGE plpgsql 
+AS
+$$
+BEGIN
+DELETE FROM summary_rental;
+INSERT INTO summary_rental
+  SELECT store_id, payment_date, SUM(payment_amount)
+  FROM detailed_rental
+  GROUP BY store_id, payment_date
+  ORDER BY 1,2;
+RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER updated_summary
+AFTER INSERT
+ON detailed_rental
+FOR EACH STATEMENT
+EXECUTE PROCEDURE sum_trigger_function();
+
+
+-- Inserting raw data. Should populate Summary table.
+
+INSERT INTO detailed_rental
+SELECT p.rental_id, s.store_id, rental_by_month(p.payment_date), 
+p.amount
+FROM payment p
+JOIN rental r ON p.rental_id = r.rental_id
+JOIN staff s ON r.staff_id = s.staff_id
+ORDER BY 2,3,4;
+
+
+SELECT * FROM detailed_rental ORDER BY 2,3 ASC; -- 14596 rows.
+SELECT * FROM summary_rental; -- 8 rows.
+
+-- Add extra row to detailed table
+
+INSERT INTO detailed_rental 
+VALUES ('000', '3', 'August', '30.00'); 
+
+-- 14597 rows in the detailed table and 9 rows in the summary table.
+
+
+-- Create a refresh tables stored procedure.
+
+CREATE OR REPLACE PROCEDURE refresh_tables()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+DELETE FROM detailed_rental;
+DELETE FROM summary_rental;
+
+INSERT INTO detailed_rental
+SELECT p.rental_id, s.store_id, rental_by_month(p.payment_date), 
+p.amount
+FROM payment p
+JOIN rental r ON p.rental_id = r.rental_id
+JOIN staff s ON r.staff_id = s.staff_id
+ORDER BY 2,3,4;
+
+RETURN;
+END;
+$$;
+
+CALL refresh_tables()
+
+
+SELECT * FROM detailed_rental ORDER BY 2,3 ASC;
+SELECT * FROM summary_rental;
+
+-- Tables return to it's original form. 
+
+
+
+
+
+
+
+
+
+
+
+
+
